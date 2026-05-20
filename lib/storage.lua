@@ -96,7 +96,10 @@ end
 
 function storage.get_base_path()
   if _base_path then return _base_path end
-  local cwd = run_command("pwd"):gsub("%s+$", "")
+  local h = io.popen("pwd")
+  local cwd = h:read("*l")
+  h:close()
+  cwd = cwd:gsub("%s+$", "")
   return cwd .. "/kb"
 end
 
@@ -117,11 +120,11 @@ end
 
 function storage.load_state()
   local path = state_path()
-  local out = run_command("cat " .. shell_escape(path) .. " 2>/dev/null")
+  local out = claudio.fs.read(path)
   if not out or out == "" then
     return { counters = {} }
   end
-  local ok, data = pcall(parse_json, out)
+  local ok, data = pcall(claudio.json.decode, out)
   if not ok then return { counters = {} } end
   return data
 end
@@ -129,8 +132,8 @@ end
 function storage.save_state(state)
   local path = state_path()
   local dir = storage.get_base_path()
-  run_command("mkdir -p " .. shell_escape(dir))
-  write_file(path, json_encode(state))
+  claudio.fs.mkdir(dir)
+  claudio.fs.write(path, claudio.json.encode(state))
 end
 
 -- ── ID generation ────────────────────────────────────────────────────────────
@@ -177,7 +180,7 @@ end
 function storage.save_entry(meta, body)
   local category = meta.category or "note"
   local dir = storage.category_path(category)
-  run_command("mkdir -p " .. shell_escape(dir))
+  claudio.fs.mkdir(dir)
 
   local slug = storage.slugify(meta.title or "untitled")
   local filename = meta.id:lower() .. "-" .. slug .. ".md"
@@ -190,25 +193,27 @@ function storage.save_entry(meta, body)
   end
 
   local content = storage.render_frontmatter(meta, body)
-  write_file(path, content)
+  claudio.fs.write(path, content)
 
   return path, filename
 end
 
 -- Read an entry by ID (scans all categories)
+-- claudio.fs.glob returns full paths; extract the basename for ID matching.
 function storage.get_entry(id)
   id = id:upper()
   for _, cat in ipairs(storage.categories()) do
     local dir = storage.category_path(cat)
-    local files = run_command("ls " .. shell_escape(dir) .. " 2>/dev/null")
-    if files and files ~= "" then
-      for file in files:gmatch("[^\n]+") do
+    local paths = claudio.fs.glob(dir .. "/*.md")
+    if paths and #paths > 0 then
+      for _, full_path in ipairs(paths) do
+        -- Extract just the filename from the full path
+        local file = full_path:match("([^/]+)$") or full_path
         if file:upper():find("^" .. id:gsub("%-", "%%-"), 1) then
-          local path = storage.entry_path(cat, file)
-          local content = run_command("cat " .. shell_escape(path) .. " 2>/dev/null")
+          local content = claudio.fs.read(full_path)
           if content and content ~= "" then
             local meta, body = storage.parse_frontmatter(content)
-            return meta, body, path
+            return meta, body, full_path
           end
         end
       end
@@ -218,6 +223,7 @@ function storage.get_entry(id)
 end
 
 -- List all entries, optionally filtered
+-- claudio.fs.glob returns full paths; no need to reconstruct path from dir + filename.
 function storage.list_entries(filter)
   filter = filter or {}
   local entries = {}
@@ -228,32 +234,29 @@ function storage.list_entries(filter)
 
   for _, cat in ipairs(cats) do
     local dir = storage.category_path(cat)
-    local files = run_command("ls " .. shell_escape(dir) .. " 2>/dev/null")
-    if files and files ~= "" then
-      for file in files:gmatch("[^\n]+") do
-        if file:match("%.md$") then
-          local path = storage.entry_path(cat, file)
-          local content = run_command("cat " .. shell_escape(path) .. " 2>/dev/null")
-          if content and content ~= "" then
-            local meta, body = storage.parse_frontmatter(content)
-            meta.category = meta.category or cat
+    local paths = claudio.fs.glob(dir .. "/*.md")
+    if paths and #paths > 0 then
+      for _, full_path in ipairs(paths) do
+        local content = claudio.fs.read(full_path)
+        if content and content ~= "" then
+          local meta, body = storage.parse_frontmatter(content)
+          meta.category = meta.category or cat
 
-            -- Apply filters
-            local match = true
-            if filter.status and meta.status ~= filter.status then
-              match = false
+          -- Apply filters
+          local match = true
+          if filter.status and meta.status ~= filter.status then
+            match = false
+          end
+          if filter.tag then
+            local found = false
+            for _, t in ipairs(meta.tags or {}) do
+              if t:lower() == filter.tag:lower() then found = true; break end
             end
-            if filter.tag then
-              local found = false
-              for _, t in ipairs(meta.tags or {}) do
-                if t:lower() == filter.tag:lower() then found = true; break end
-              end
-              if not found then match = false end
-            end
+            if not found then match = false end
+          end
 
-            if match then
-              table.insert(entries, { meta = meta, body = body, path = path })
-            end
+          if match then
+            table.insert(entries, { meta = meta, body = body, path = full_path })
           end
         end
       end
@@ -309,29 +312,27 @@ end
 function storage.delete_entry(id)
   local meta, _, path = storage.get_entry(id)
   if not meta then return false, "entry not found: " .. id end
-  run_command("rm " .. shell_escape(path))
+  os.remove(path)
   return true, nil
 end
 
 -- Check if KB is initialized
 function storage.is_initialized()
   local base = storage.get_base_path()
-  local out = run_command("test -d " .. shell_escape(base) .. " && echo yes || echo no")
-  return out and out:match("yes") ~= nil
+  return claudio.fs.exists(base)
 end
 
 -- Initialize KB directory structure
 function storage.init_kb()
   local base = storage.get_base_path()
   for _, cat in ipairs(storage.categories()) do
-    run_command("mkdir -p " .. shell_escape(base .. "/" .. cat))
+    claudio.fs.mkdir(base .. "/" .. cat)
   end
   -- Create .gitkeep files
   for _, cat in ipairs(storage.categories()) do
     local gk = base .. "/" .. cat .. "/.gitkeep"
-    local exists = run_command("test -f " .. shell_escape(gk) .. " && echo yes || echo no")
-    if not (exists and exists:match("yes")) then
-      write_file(gk, "")
+    if not claudio.fs.exists(gk) then
+      claudio.fs.write(gk, "")
     end
   end
   -- Initialize state if needed

@@ -54,7 +54,7 @@ function ai.classify(input_text)
     return ai.classify_heuristic(input_text)
   end
 
-  local parse_ok, data = pcall(parse_json, text)
+  local parse_ok, data = pcall(claudio.json.decode, text)
   if not parse_ok or not data then
     return ai.classify_heuristic(input_text)
   end

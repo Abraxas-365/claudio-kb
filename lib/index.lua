@@ -98,7 +98,7 @@ end
 function index.write(storage)
   local content = index.generate(storage)
   local path = storage.get_base_path() .. "/index.md"
-  write_file(path, content)
+  claudio.fs.write(path, content)
   return path
 end
 
@@ -156,7 +156,7 @@ function index.write_export(storage, filename)
   filename = filename or "export.md"
   local content = index.export(storage)
   local path = storage.get_base_path() .. "/" .. filename
-  write_file(path, content)
+  claudio.fs.write(path, content)
   return path
 end
 
