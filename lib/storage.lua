@@ -5,6 +5,46 @@
 
 local storage = {}
 
+-- ── Lua stdlib file helpers ──────────────────────────────────────────────────
+
+local function read_file(path)
+  local f = io.open(path, "r")
+  if not f then return nil end
+  local c = f:read("*a")
+  f:close()
+  return c
+end
+
+local function write_file(path, content)
+  local f = io.open(path, "w")
+  if not f then return nil, "cannot open " .. path end
+  f:write(content)
+  f:close()
+  return true
+end
+
+local function file_exists(path)
+  local f = io.open(path, "r")
+  if f then f:close(); return true end
+  return false
+end
+
+local function glob_files(pattern)
+  local h = io.popen('ls -1 ' .. pattern .. ' 2>/dev/null')
+  if not h then return {} end
+  local out = h:read("*a")
+  h:close()
+  local files = {}
+  for line in out:gmatch("[^\n]+") do
+    files[#files + 1] = line
+  end
+  return files
+end
+
+local function mkdir_p(path)
+  os.execute('mkdir -p "' .. path .. '"')
+end
+
 -- ── Frontmatter parsing ──────────────────────────────────────────────────────
 
 -- Parse YAML-like frontmatter from markdown content.
@@ -120,7 +160,7 @@ end
 
 function storage.load_state()
   local path = state_path()
-  local out = claudio.fs.read(path)
+  local out = read_file(path)
   if not out or out == "" then
     return { counters = {} }
   end
@@ -132,8 +172,8 @@ end
 function storage.save_state(state)
   local path = state_path()
   local dir = storage.get_base_path()
-  claudio.fs.mkdir(dir)
-  claudio.fs.write(path, claudio.json.encode(state))
+  mkdir_p(dir)
+  write_file(path, claudio.json.encode(state))
 end
 
 -- ── ID generation ────────────────────────────────────────────────────────────
@@ -180,7 +220,7 @@ end
 function storage.save_entry(meta, body)
   local category = meta.category or "note"
   local dir = storage.category_path(category)
-  claudio.fs.mkdir(dir)
+  mkdir_p(dir)
 
   local slug = storage.slugify(meta.title or "untitled")
   local filename = meta.id:lower() .. "-" .. slug .. ".md"
@@ -193,24 +233,24 @@ function storage.save_entry(meta, body)
   end
 
   local content = storage.render_frontmatter(meta, body)
-  claudio.fs.write(path, content)
+  write_file(path, content)
 
   return path, filename
 end
 
 -- Read an entry by ID (scans all categories)
--- claudio.fs.glob returns full paths; extract the basename for ID matching.
+-- glob_files returns full paths; extract the basename for ID matching.
 function storage.get_entry(id)
   id = id:upper()
   for _, cat in ipairs(storage.categories()) do
     local dir = storage.category_path(cat)
-    local paths = claudio.fs.glob(dir .. "/*.md")
+    local paths = glob_files(dir .. "/*.md")
     if paths and #paths > 0 then
       for _, full_path in ipairs(paths) do
         -- Extract just the filename from the full path
         local file = full_path:match("([^/]+)$") or full_path
         if file:upper():find("^" .. id:gsub("%-", "%%-"), 1) then
-          local content = claudio.fs.read(full_path)
+          local content = read_file(full_path)
           if content and content ~= "" then
             local meta, body = storage.parse_frontmatter(content)
             return meta, body, full_path
@@ -223,7 +263,7 @@ function storage.get_entry(id)
 end
 
 -- List all entries, optionally filtered
--- claudio.fs.glob returns full paths; no need to reconstruct path from dir + filename.
+-- glob_files returns full paths; no need to reconstruct path from dir + filename.
 function storage.list_entries(filter)
   filter = filter or {}
   local entries = {}
@@ -234,10 +274,10 @@ function storage.list_entries(filter)
 
   for _, cat in ipairs(cats) do
     local dir = storage.category_path(cat)
-    local paths = claudio.fs.glob(dir .. "/*.md")
+    local paths = glob_files(dir .. "/*.md")
     if paths and #paths > 0 then
       for _, full_path in ipairs(paths) do
-        local content = claudio.fs.read(full_path)
+        local content = read_file(full_path)
         if content and content ~= "" then
           local meta, body = storage.parse_frontmatter(content)
           meta.category = meta.category or cat
@@ -319,20 +359,20 @@ end
 -- Check if KB is initialized
 function storage.is_initialized()
   local base = storage.get_base_path()
-  return claudio.fs.exists(base)
+  return file_exists(base)
 end
 
 -- Initialize KB directory structure
 function storage.init_kb()
   local base = storage.get_base_path()
   for _, cat in ipairs(storage.categories()) do
-    claudio.fs.mkdir(base .. "/" .. cat)
+    mkdir_p(base .. "/" .. cat)
   end
   -- Create .gitkeep files
   for _, cat in ipairs(storage.categories()) do
     local gk = base .. "/" .. cat .. "/.gitkeep"
-    if not claudio.fs.exists(gk) then
-      claudio.fs.write(gk, "")
+    if not file_exists(gk) then
+      write_file(gk, "")
     end
   end
   -- Initialize state if needed

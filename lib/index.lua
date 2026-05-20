@@ -3,6 +3,16 @@
 
 local index = {}
 
+-- ── Lua stdlib file helpers ──────────────────────────────────────────────────
+
+local function write_file(path, content)
+  local f = io.open(path, "w")
+  if not f then return nil, "cannot open " .. path end
+  f:write(content)
+  f:close()
+  return true
+end
+
 -- ── Index generation ─────────────────────────────────────────────────────────
 
 local CATEGORY_LABELS = {
@@ -98,7 +108,7 @@ end
 function index.write(storage)
   local content = index.generate(storage)
   local path = storage.get_base_path() .. "/index.md"
-  claudio.fs.write(path, content)
+  write_file(path, content)
   return path
 end
 
@@ -156,7 +166,7 @@ function index.write_export(storage, filename)
   filename = filename or "export.md"
   local content = index.export(storage)
   local path = storage.get_base_path() .. "/" .. filename
-  claudio.fs.write(path, content)
+  write_file(path, content)
   return path
 end
 
