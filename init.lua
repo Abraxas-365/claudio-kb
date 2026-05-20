@@ -220,7 +220,7 @@ claudio.tools.register({
   description = "Log a new entry to the project knowledge base. Accepts freeform text about features, decisions, architecture, sprints, or notes. AI automatically classifies, structures, and saves it as a well-formatted markdown document. Use this whenever the team makes a decision, plans a feature, documents architecture, or wants to capture project knowledge.",
   schema      = KB_LOG_SCHEMA,
   execute     = function(input_json)
-    local input = claudio.json.decode(input_json)
+    local input = input_json
     if not input.content or input.content == "" then
       return err("content is required")
     end
@@ -295,7 +295,7 @@ claudio.tools.register({
   description = "Search the project knowledge base by keyword. Matches against titles, tags, and content. Returns relevant entries ranked by relevance. Use this to find existing knowledge before logging duplicates, or to understand project context.",
   schema      = KB_QUERY_SCHEMA,
   execute     = function(input_json)
-    local input = claudio.json.decode(input_json)
+    local input = input_json
     if not input.query or input.query == "" then
       return err("query is required")
     end
@@ -341,7 +341,7 @@ claudio.tools.register({
   description = "List all entries in the project knowledge base, optionally filtered by category, status, or tag. Shows a summary table of all matching entries.",
   schema      = KB_LIST_SCHEMA,
   execute     = function(input_json)
-    local input = claudio.json.decode(input_json)
+    local input = input_json
 
     ensure_init()
 
@@ -381,7 +381,7 @@ claudio.tools.register({
   description = "Get the full content of a knowledge base entry by its ID (e.g. F-001, D-002). Returns complete metadata and markdown body.",
   schema      = KB_GET_SCHEMA,
   execute     = function(input_json)
-    local input = claudio.json.decode(input_json)
+    local input = input_json
     if not input.id or input.id == "" then
       return err("id is required")
     end
@@ -420,7 +420,7 @@ claudio.tools.register({
   description = "Update an existing knowledge base entry. Can update metadata (status, tags, priority, title) and/or replace or append to the content body. Use 'append' to add notes without overwriting.",
   schema      = KB_UPDATE_SCHEMA,
   execute     = function(input_json)
-    local input = claudio.json.decode(input_json)
+    local input = input_json
     if not input.id or input.id == "" then
       return err("id is required")
     end
@@ -479,7 +479,7 @@ claudio.tools.register({
   description = "Delete a knowledge base entry by ID. This is permanent.",
   schema      = KB_DELETE_SCHEMA,
   execute     = function(input_json)
-    local input = claudio.json.decode(input_json)
+    local input = input_json
     if not input.id or input.id == "" then
       return err("id is required")
     end
@@ -503,7 +503,7 @@ claudio.tools.register({
   description = "Generate documentation from the knowledge base. 'index' creates a summary index.md. 'full' creates a consolidated single-file export of all entries.",
   schema      = KB_EXPORT_SCHEMA,
   execute     = function(input_json)
-    local input = claudio.json.decode(input_json)
+    local input = input_json
     local format = input.format or "index"
 
     ensure_init()
